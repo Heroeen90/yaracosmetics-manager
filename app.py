@@ -191,7 +191,7 @@ with tab_add:
         prod_image = st.text_input("🔗 رابط صورة المنتج (اختياري)")
         
         # زر الحفظ الكبير والمميز للموبايل
-        submit_btn = st.form_submit_form_button("💾 حفظ المادة في النظام")
+        submit_btn = st.form_submit_button("💾 حفظ المادة في النظام")
         
         if submit_btn:
             if not prod_name:
