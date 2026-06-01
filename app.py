@@ -203,12 +203,12 @@ with tab_add:
                 insert_product(new_row)
 
 # ==========================================
-# TAB 3: STOCK MANAGEMENT
+# TAB 3: STOCK MANAGEMENT (نسخة مطورة للموبايل)
 # ==========================================
 with tab_stock:
     st.write("### 📦 جرد كلي للمخزن الحالي")
     
-    # زر يدوي لتحديث البيانات في حال أردت المزامنة الفورية مع السيرفر
+    # زر يدوي لتحديث البيانات
     if st.button("🔄 تحديث ومزامنة البيانات الآن"):
         st.session_state['cached_data'] = load_data()
         st.success("تم تحديث المخزن من السيرفر!")
@@ -223,15 +223,39 @@ with tab_stock:
                 df_filtered['category'].str.contains(search_query, case=False, na=False)
             ]
             
-        display_cols = ['name', 'category', 'quantity', 'purchase_price', 'sale_price', 'supplier']
+        # 1. عرض الجدول الأساسي (أعمدة خفيفة تناسب شاشة الموبايل)
+        st.write("#### 📊 جدول المواد السريع")
+        display_cols = ['name', 'category', 'quantity']
         st.dataframe(df_filtered[display_cols].rename(columns={
             'name': 'اسم المنتج',
             'category': 'التصنيف',
-            'quantity': 'الكمية',
-            'purchase_price': 'سعر الشراء',
-            'sale_price': 'سعر البيع',
-            'supplier': 'المورد'
+            'quantity': 'الكمية'
         }), use_container_width=True)
+        
+        # 2. عرض كروت التفاصيل الكاملة (الحل السحري لعدم اختفاء الأسعار على الهاتف)
+        st.write("#### 🔍 تفاصيل الأسعار والموردين")
+        
+        for index, row in df_filtered.iterrows():
+            # حساب الأرباح الفردية للمادة
+            p_price = float(row.get('purchase_price', 0))
+            s_price = float(row.get('sale_price', 0))
+            qty = int(row.get('quantity', 0))
+            item_profit = s_price - p_price
+            
+            # تصميم كرت مستقل لكل منتج
+            st.markdown(f"""
+            <div style="background-color: #FFF; padding: 15px; border-radius: 10px; border-right: 5px solid #9C27B0; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 12px;">
+                <h4 style="margin: 0 0 8px 0; color: #E91E63;">🛍️ {row.get('name', 'بدون اسم')}</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 14px; text-align: right; color: #555;">
+                    <div>📂 <b>التصنيف:</b> {row.get('category', '-')}</div>
+                    <div>📦 <b>الكمية الحالية:</b> <span style="color:#E91E63; font-weight:bold;">{qty}</span></div>
+                    <div>💵 <b>سعر الشراء:</b> {p_price:,.0f} د.ع</div>
+                    <div>💰 <b>سعر البيع:</b> <span style="color:#4CAF50; font-weight:bold;">{s_price:,.0f} د.ع</span></div>
+                    <div>🚚 <b>المورد:</b> {row.get('supplier', '-')}</div>
+                    <div>✨ <b>ربح القطعة:</b> {item_profit:,.0f} د.ع</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         
         st.write("---")
         csv_data = df_filtered.to_csv(index=False).encode('utf-8-sig')
@@ -243,4 +267,3 @@ with tab_stock:
         )
     else:
         st.info("المخزن فارغ حالياً.")
-
