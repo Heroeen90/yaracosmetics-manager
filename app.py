@@ -1,7 +1,7 @@
 import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ==========================================
 # 1. CONFIG & INITIALIZATION
@@ -75,10 +75,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("<div class='main-title'>💄 إدارة كوزمتك يارا</div>", unsafe_allow_html=True)
-st.markdown("<div class='sub-title'>الإصدار التجاري v3.0 - حماية الديون والتسديد الجزئي</div>", unsafe_allow_html=True)
+st.markdown("<div class='sub-title'>الإصدار التجاري v3.2 - معالجة توقيت بغداد المحلي 🇮🇶</div>", unsafe_allow_html=True)
 
 # ==========================================
-# 3. DATA LAYER
+# 3. DATA LAYER & TIMEZONE ADJUSTMENT
 # ==========================================
 def load_data():
     try:
@@ -92,6 +92,18 @@ if 'cached_data' not in st.session_state:
 
 def refresh_db():
     st.session_state['cached_data'] = load_data()
+
+# دالة ذكية لتحويل وقت السيرفر العالمي إلى توقيت بغداد المحلي (+3 ساعات)
+def convert_to_baghdad_time(utc_time_str):
+    try:
+        # إزالة الحروف الزائدة إن وجدت لتحويل النص إلى تاريخ بنجاح
+        clean_time_str = utc_time_str.split('+')[0].split('.')[0]
+        utc_dt = datetime.strptime(clean_time_str, '%Y-%m-%dT%H:%M:%S')
+        # إضافة 3 ساعات كاملة لتطابق توقيت العراق الحقيقي
+        baghdad_dt = utc_dt + timedelta(hours=3)
+        return baghdad_dt.strftime('%Y-%m-%d %I:%M %p') # تنسيق عراقي مريح (AM/PM)
+    except:
+        return utc_time_str
 
 raw_data = st.session_state['cached_data']
 df_all = pd.DataFrame(raw_data) if raw_data else pd.DataFrame()
@@ -108,8 +120,6 @@ if not df_all.empty:
     df_products = df_all[df_all['type'] == 'product']
     df_sales_log = df_all[df_all['type'] == 'sale_record']
     df_expenses_log = df_all[df_all['type'] == 'expense_record']
-    
-    # جلب الديون النشطة فقط (التي مبلّغها أكبر من 0 وليست مسددة بالكامل)
     df_debts_log = df_all[(df_all['type'] == 'debt_record') & (df_all['sale_price'] > 0)]
 else:
     df_products = df_sales_log = df_expenses_log = df_debts_log = pd.DataFrame()
@@ -299,7 +309,7 @@ with tab_stock:
         st.info("المخزن فارغ حالياً.")
 
 # ==========================================
-# TAB 5: EXPENSES & DEBTS (نسخة إدارة الديون المطورة بالكامل والتسديد الجزئي)
+# TAB 5: EXPENSES & DEBTS (التوقيت المحلي والتسديد الجزئي المطور)
 # ==========================================
 with tab_exp_debt:
     st.write("### 💸 إدارة النفقات والديون الخارجية")
@@ -360,9 +370,8 @@ with tab_exp_debt:
                     except Exception as e:
                         st.error(f"خلل بالسيرفر: {e}")
 
-    # استعراض وتحديث الديون والمصاريف مع إظهار التاريخ والوقت والتسديد الذكي
     st.write("---")
-    st.write("### 📜 السجلات والكشوفات اللحظية الموثقة")
+    st.write("### 📜 السجلات والكشوفات اللحظية الموثقة (توقيت بغداد 🇮🇶)")
     
     cx1, cx2 = st.columns(2)
     
@@ -370,7 +379,8 @@ with tab_exp_debt:
         st.write("##### 📑 سجل المصاريف المقيدة اليوم:")
         if not df_expenses_log.empty:
             df_exp_display = df_expenses_log.copy()
-            df_exp_display['التاريخ'] = pd.to_datetime(df_exp_display['created_at']).dt.strftime('%Y-%m-%d %H:%M')
+            # تطبيق دالة تحويل التوقيت المحلي لبغداد
+            df_exp_display['التاريخ'] = df_exp_display['created_at'].apply(convert_to_baghdad_time)
             st.dataframe(df_exp_display[['name', 'purchase_price', 'التاريخ']].rename(columns={
                 'name':'البيان', 'purchase_price':'المبلغ د.ع'
             }), use_container_width=True)
@@ -384,20 +394,18 @@ with tab_exp_debt:
                 d_id = int(d_row['id'])
                 d_name = d_row['supplier']
                 d_amt = float(d_row['sale_price'])
-                d_date = pd.to_datetime(d_row['created_at']).strftime('%Y-%m-%d %H:%M')
+                # تحويل وقت إنشاء الدين ليتطابق مع توقيت الهاتف الفعلي لبغداد
+                d_date = convert_to_baghdad_time(d_row['created_at'])
                 
-                # كرت عرض الدين
                 st.markdown(f"""
                 <div style="background-color: #FFF3E0; padding: 12px; border-radius: 8px; border-right: 5px solid #FF9800; margin-bottom: 5px;">
                     <span style="font-size:16px; font-weight:bold; color:#E65100;">👤 الزبون: {d_name}</span><br>
                     <span style="font-size:14px; color:#555;">💵 الدين المتبقي الحالي: <b style="font-size:16px; color:#E91E63;">{d_amt:,.0f} د.ع</b></span><br>
-                    <small style="color:gray;">📅 تاريخ التثبيت: {d_date}</small>
+                    <small style="color:gray;">📅 تاريخ التثبيت الحقيقي: {d_date}</small>
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # آلية الأمان والتسديد الذكي (توسيع عند الضغط للوقاية من النقرات العشوائية)
                 with st.expander(f"💳 خيارات تسديد حساب {d_name}"):
-                    # صندوق إدخال مبلغ التسديد الفعلي
                     paid_amount = st.number_input(
                         f"المبلغ المدفوع واصلاً من {d_name} (د.ع)", 
                         min_value=0.0, 
@@ -407,7 +415,7 @@ with tab_exp_debt:
                         key=f"amt_{d_id}"
                     )
                     
-                    # زر التأكيد النهائي لحماية البيانات
+                    # زر التأكيد الواعي المطور لحماية البيانات ضد النقرات الخاطئة
                     confirm_pay = st.button(f"⚠️ تأكيد خصم {paid_amount:,.0f} د.ع نهائياً", key=f"btn_{d_id}")
                     
                     if confirm_pay:
@@ -415,18 +423,15 @@ with tab_exp_debt:
                             st.error("الرجاء إدخال مبلغ صحيح أكبر من صفر")
                         else:
                             try:
-                                # حساب المتبقي الجديد على الزبون
                                 remaining_debt = d_amt - paid_amount
                                 
                                 if remaining_debt <= 0:
-                                    # إذا سدد المبلغ بالكامل، يتم تصفير القيمة وتحديث الحالة
                                     supabase.table(TABLE_NAME).update({
                                         "sale_price": 0,
                                         "category": "تم التسديد بالكامل"
                                     }).eq("id", d_id).execute()
                                     st.success(f"🎉 تم تسديد الدين بالكامل وإغلاق حساب {d_name}!")
                                 else:
-                                    # إذا سدد تسديداً جزئياً، يتم تحديث القيمة المتبقية فقط في قاعدة البيانات
                                     supabase.table(TABLE_NAME).update({
                                         "sale_price": float(remaining_debt),
                                         "category": "تسديد جزئي مستمر"
