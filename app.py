@@ -11,7 +11,7 @@ st.set_page_config(
     page_title="YARA Cosmetics Manager",
     page_icon="💄",
     layout="wide",
-    initial_sidebar_state="collapsed" # مريح جداً للموبايل ليبقى التركيز على المحتوى
+    initial_sidebar_state="collapsed"
 )
 
 # الاتصال بقاعدة البيانات
@@ -19,7 +19,6 @@ SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# اسم الجدول الفعلي لديك في Supabase
 TABLE_NAME = "yara-cosmetics"
 
 # ==========================================
@@ -78,12 +77,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Title Blocks
 st.markdown("<div class='main-title'>💄 كوزمتك يارا</div>", unsafe_allow_html=True)
 st.markdown("<div class='sub-title'>النظام الذكي لإدارة المتجر والمخزون</div>", unsafe_allow_html=True)
 
 # ==========================================
-# 3. DATA FUNCTIONS (CRUD)
+# 3. DATA FUNCTIONS (FIXED)
 # ==========================================
 def load_data():
     try:
@@ -93,45 +91,44 @@ def load_data():
         st.error(f"خطأ في جلب البيانات: {e}")
         return []
 
+# نظام كاش بسيط لمنع الانهيار أثناء الحفظ والتحديث
+if 'cached_data' not in st.session_state:
+    st.session_state['cached_data'] = load_data()
+
 def insert_product(data):
     try:
         supabase.table(TABLE_NAME).insert(data).execute()
-        st.success("🎉 تم حفظ البيانات بنجاح في قاعدة البيانات!")
-        st.rerun()
+        # تحديث الكاش المحلي فوراً لتظهر البيانات الجديدة بدون rerun مفاجئ
+        st.session_state['cached_data'] = load_data()
+        st.success("🎉 تم حفظ المادة بنجاح في قاعدة البيانات!")
     except Exception as e:
         st.error(f"فشلت عملية الحفظ: {e}")
 
-data_list = load_data()
+data_list = st.session_state['cached_data']
 df_all = pd.DataFrame(data_list) if data_list else pd.DataFrame()
 
 # ==========================================
-# 4. NAVIGATION TABS (Perfect for Mobile)
+# 4. NAVIGATION TABS
 # ==========================================
-# استخدام التبويبات كقائمة تنقل سريعة وعريضة تناسب لمس شاشات الهاتف
 tab_dash, tab_add, tab_stock = st.tabs(["📊 لوحة التحكم", "➕ إضافة حركة/منتج", "📦 جرد المخزون"])
 
 # ==========================================
-# TAB 1: DASHBOARD (لوحة التحكم والتقارير)
+# TAB 1: DASHBOARD
 # ==========================================
 with tab_dash:
     if not df_all.empty:
-        # حسابات ذكية ديناميكية مبنية على مدخلاتك الحالية
-        total_types = len(df_all)
-        
-        # التأكد من تحويل القيم إلى أرقام لتفادي أخطاء الحسابات
         df_all['purchase_price'] = pd.to_numeric(df_all.get('purchase_price', 0), errors='coerce').fillna(0)
         df_all['sale_price'] = pd.to_numeric(df_all.get('sale_price', 0), errors='coerce').fillna(0)
         df_all['quantity'] = pd.to_numeric(df_all.get('quantity', 0), errors='coerce').fillna(0)
         df_all['min_quantity'] = pd.to_numeric(df_all.get('min_quantity', 3), errors='coerce').fillna(3)
         
+        total_types = len(df_all)
         stock_value_purchase = (df_all['purchase_price'] * df_all['quantity']).sum()
         stock_value_sale = (df_all['sale_price'] * df_all['quantity']).sum()
         expected_profit = stock_value_sale - stock_value_purchase
         
-        # تنبيهات النقص (حد التنبيه المكتوب أو الافتراضي 3)
         low_stock_df = df_all[df_all['quantity'] <= df_all['min_quantity']]
         
-        # كروت العرض الاحترافية
         col1, col2 = st.columns(2)
         with col1:
             st.markdown(f"<div class='card'>📦 عدد المواد الأصلي<div class='metric'>{total_types} مادة</div></div>", unsafe_allow_html=True)
@@ -140,13 +137,11 @@ with tab_dash:
             st.markdown(f"<div class='card'>📈 إجمالي القيمة عند البيع<div class='metric'>{stock_value_sale:,.0f} د.ع</div></div>", unsafe_allow_html=True)
             st.markdown(f"<div class='card'>✨ الأرباح المتوقعة المتراكمة<div class='metric' style='color:#4CAF50;'>{expected_profit:,.0f} د.ع</div></div>", unsafe_allow_html=True)
         
-        # قسم التنبيهات الفورية
         if not low_stock_df.empty:
-            st.warning(f"⚠️ تنبيه: لديك ({len(low_stock_df)}) منتجات وصلت أو أقل من حد التنبيه المخزني!")
-            with st.expander("🔍 عرض المنتجات التي أوشكت على النفاد"):
+            st.warning(f"⚠️ تنبيه: لديك ({len(low_stock_df)}) منتجات وصلت أو أقل من حد التنبيه!")
+            with st.expander("🔍 عرض المنتجات الموشكة على النفاد"):
                 st.dataframe(low_stock_df[['name', 'quantity', 'min_quantity']], use_container_width=True)
                 
-        # رسم بياني بسيط وجذاب لتوزيع المنتجات حسب التصنيفات
         st.write("### 📊 إحصائيات التصنيفات المتوفرة")
         if 'category' in df_all.columns:
             cat_counts = df_all['category'].value_counts().reset_index()
@@ -155,24 +150,21 @@ with tab_dash:
                          color_discrete_sequence=px.colors.qualitative.Pastel)
             fig.update_layout(showlegend=False, height=300, font=dict(family="Tajawal"))
             st.plotly_chart(fig, use_container_width=True)
-            
     else:
         st.info("👋 مرحباً بك في نظام يارا! قاعدة البيانات فارغة حالياً. ابدأ بإضافة أول منتج من التبويب بالأعلى.")
 
 # ==========================================
-# TAB 2: ADD PRODUCT / TRANSACTION (الإدخال الذكي)
+# TAB 2: ADD PRODUCT
 # ==========================================
 with tab_add:
     st.write("### 📥 نموذج إضافة مادة جديدة للمخزن")
     
-    # واجهة سهلة ومدخلات واضحة مريحة للكتابة بالهاتف
     with st.form("add_product_form", clear_on_submit=True):
         prod_name = st.text_input("🏷️ اسم المنتج (مثال: عطر شانيل، غسول سيرافي...)")
         
-        # تصنيفات جاهزة مع إمكانية كتابة تصنيف جديد يدوياً كما طلبت بالبرومبت
         category_options = ["عطور", "كريمات", "مستحضرات تجميل", "غسول", "معطرات", "منتجات شعر", "أدوات شخصية"]
         prod_cat = st.selectbox("🗂️ التصنيف الاساسي", category_options)
-        custom_cat = st.text_input("✍️ أو اكتب تصنيف جديد هنا (إذا لم يكن موجوداً بالأعلى)")
+        custom_cat = st.text_input("✍️ أو اكتب تصنيف جديد هنا")
         
         prod_supplier = st.text_input("🚚 اسم المورد / شركة التجهيز")
         
@@ -190,7 +182,7 @@ with tab_add:
             
         prod_image = st.text_input("🔗 رابط صورة المنتج (اختياري)")
         
-        # زر الحفظ الكبير والمميز للموبايل
+        # استخدام الدالة القياسية الصحيحة والآمنة للاستمارات
         submit_btn = st.form_submit_button("💾 حفظ المادة في النظام")
         
         if submit_btn:
@@ -211,13 +203,17 @@ with tab_add:
                 insert_product(new_row)
 
 # ==========================================
-# TAB 3: STOCK MANAGEMENT (الجرد والتصدير)
+# TAB 3: STOCK MANAGEMENT
 # ==========================================
 with tab_stock:
     st.write("### 📦 جرد كلي للمخزن الحالي")
     
+    # زر يدوي لتحديث البيانات في حال أردت المزامنة الفورية مع السيرفر
+    if st.button("🔄 تحديث ومزامنة البيانات الآن"):
+        st.session_state['cached_data'] = load_data()
+        st.success("تم تحديث المخزن من السيرفر!")
+    
     if not df_all.empty:
-        # محرك بحث سريع للموبايل
         search_query = st.text_input("🔍 ابحث عن أي منتج بالاسم أو التصنيف...")
         
         df_filtered = df_all.copy()
@@ -227,7 +223,6 @@ with tab_stock:
                 df_filtered['category'].str.contains(search_query, case=False, na=False)
             ]
             
-        # عرض البيانات بجدول تفاعلي رائع يمتد لكامل عرض الشاشة
         display_cols = ['name', 'category', 'quantity', 'purchase_price', 'sale_price', 'supplier']
         st.dataframe(df_filtered[display_cols].rename(columns={
             'name': 'اسم المنتج',
@@ -238,7 +233,6 @@ with tab_stock:
             'supplier': 'المورد'
         }), use_container_width=True)
         
-        # ميزة تصدير البيانات إلى Excel / CSV كملف جاهز للتحميل في الموبايل
         st.write("---")
         csv_data = df_filtered.to_csv(index=False).encode('utf-8-sig')
         st.download_button(
