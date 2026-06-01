@@ -68,38 +68,26 @@ st.markdown("<div class='sub-title'>لوحة التحكم الذكية لإدا�
 # LOAD DATA
 # =========================
 def get_products():
-    return supabase.table("products").select("*").execute().data
-
-def get_sales():
-    return supabase.table("sales").select("*").execute().data
-
-def get_purchases():
-    return supabase.table("purchases").select("*").execute().data
-
-def get_expenses():
-    return supabase.table("expenses").select("*").execute().data
-
-def get_debts():
-    return supabase.table("debts").select("*").execute().data
-
+    # تم تغيير اسم الجدول هنا ليتطابق مع الجدول الذي أنشأته
+    try:
+        return supabase.table("yara-cosmetics").select("*").execute().data
+    except Exception as e:
+        return []
 
 products = get_products()
-sales = get_sales()
-purchases = get_purchases()
-expenses = get_expenses()
-debts = get_debts()
 
 # =========================
 # CALCULATIONS
 # =========================
-total_products = len(products)
+total_products = len(products) if products else 0
 
-total_sales = sum([s["total"] for s in sales]) if sales else 0
-total_purchases = sum([p["total"] for p in purchases]) if purchases else 0
-total_expenses = sum([e["amount"] for e in expenses]) if expenses else 0
-total_debts = sum([d["amount"] - d["paid_amount"] for d in debts]) if debts else 0
+# حساب المبيعات والمشتريات بناءً على البيانات المتوفرة في جدول المنتجات الحالي كحسابات أولية
+total_sales = sum([float(p.get("sale_price") or 0) * int(p.get("quantity") or 0) for p in products]) if products else 0
+total_purchases = sum([float(p.get("purchase_price") or 0) * int(p.get("quantity") or 0) for p in products]) if products else 0
+total_expenses = 0
+total_debts = 0
 
-profit = total_sales - total_purchases - total_expenses
+profit = total_sales - total_purchases
 
 # =========================
 # DASHBOARD CARDS
@@ -117,7 +105,7 @@ with col1:
 with col2:
     st.markdown(f"""
     <div class='card'>
-        💰 المبيعات
+        💰 قيمة المبيعات المتوقعة
         <div class='metric'>{total_sales:,.0f} IQD</div>
     </div>
     """, unsafe_allow_html=True)
@@ -125,7 +113,7 @@ with col2:
 with col3:
     st.markdown(f"""
     <div class='card'>
-        🛒 المشتريات
+        🛒 تكلفة رأس المال
         <div class='metric'>{total_purchases:,.0f} IQD</div>
     </div>
     """, unsafe_allow_html=True)
@@ -133,31 +121,8 @@ with col3:
 with col4:
     st.markdown(f"""
     <div class='card'>
-        📈 الربح
+        📈 الربح المتوقع
         <div class='metric'>{profit:,.0f} IQD</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.divider()
-
-# =========================
-# SECOND ROW
-# =========================
-col5, col6 = st.columns(2)
-
-with col5:
-    st.markdown(f"""
-    <div class='card'>
-        💸 المصاريف
-        <div class='metric'>{total_expenses:,.0f} IQD</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col6:
-    st.markdown(f"""
-    <div class='card'>
-        💳 الديون المستحقة
-        <div class='metric'>{total_debts:,.0f} IQD</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -166,18 +131,14 @@ st.divider()
 # =========================
 # TABLES SECTION
 # =========================
-st.subheader("📦 المنتجات")
+st.subheader("📦 جدول المنتجات المتوفرة")
 
 if products:
     df = pd.DataFrame(products)
+    # ترتيب الأعمدة بشكل منسق للعرض
+    cols_order = ['id', 'name', 'category', 'supplier', 'purchase_price', 'sale_price', 'quantity', 'min_quantity', 'created_at']
+    existing_cols = [c for c in cols_order if c in df.columns]
+    df = df[existing_cols]
     st.dataframe(df, use_container_width=True)
 else:
-    st.info("لا توجد منتجات بعد")
-
-st.subheader("💳 الديون")
-
-if debts:
-    df2 = pd.DataFrame(debts)
-    st.dataframe(df2, use_container_width=True)
-else:
-    st.info("لا توجد ديون")
+    st.info("لا توجد منتجات مضافة في جدول yara-cosmetics حتى الآن. يرجى إضافة منتج من لوحة تحكم Supabase لتظهر هنا.")
